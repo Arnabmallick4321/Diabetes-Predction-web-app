@@ -2,7 +2,6 @@
 """
 Diabetes Prediction Web App
 
-Created on Sat Sep 12 20:57:54 2026
 @author: arnab
 """
 
@@ -10,11 +9,14 @@ import numpy as np
 import pickle
 import streamlit as st
 from pathlib import Path
+from sklearn.preprocessing import StandardScaler
+import pandas as pd
 
 
 # --------------------------------------------------
 # Page Configuration
 # --------------------------------------------------
+
 st.set_page_config(
     page_title="Diabetes Prediction",
     page_icon="🩺",
@@ -23,15 +25,14 @@ st.set_page_config(
 
 
 # --------------------------------------------------
-# Load the trained model
+# Load Trained Model
 # --------------------------------------------------
+
 @st.cache_resource
 def load_model():
 
-    # Get the folder where this Python file is located
     model_path = Path(__file__).parent / "trained_model.sav"
 
-    # Load the trained model
     with open(model_path, "rb") as file:
         model = pickle.load(file)
 
@@ -39,23 +40,55 @@ def load_model():
 
 
 # --------------------------------------------------
-# Diabetes Prediction Function
+# Load Dataset and Create Scaler
 # --------------------------------------------------
-def diabetes_prediction(input_data, model):
 
-    # Convert input data into NumPy array
+@st.cache_resource
+def load_scaler():
+
+    # Dataset path
+    dataset_path = Path(__file__).parent / "diabetes.csv"
+
+    # Load dataset
+    diabetes_dataset = pd.read_csv(dataset_path)
+
+    # Separate features from target
+    X = diabetes_dataset.drop(columns="Outcome")
+
+    # Create scaler
+    scaler = StandardScaler()
+
+    # Fit scaler on the same dataset used for training
+    scaler.fit(X)
+
+    return scaler
+
+
+# --------------------------------------------------
+# Diabetes Prediction
+# --------------------------------------------------
+
+def diabetes_prediction(input_data, model, scaler):
+
+    # Convert input data to NumPy array
     input_data_as_numpy_array = np.asarray(
         input_data,
         dtype=float
     )
 
-    # Reshape the data for one prediction
+    # Reshape for one prediction
     input_data_reshaped = input_data_as_numpy_array.reshape(1, -1)
 
-    # Make prediction
-    prediction = model.predict(input_data_reshaped)
+    # IMPORTANT:
+    # Scale input using the same StandardScaler
+    # used during model training
+    input_data_scaled = scaler.transform(
+        input_data_reshaped
+    )
 
-    # Return result
+    # Prediction
+    prediction = model.predict(input_data_scaled)
+
     if prediction[0] == 0:
         return "The person is non-diabetic"
     else:
@@ -65,6 +98,7 @@ def diabetes_prediction(input_data, model):
 # --------------------------------------------------
 # Main Application
 # --------------------------------------------------
+
 def main():
 
     # Title
@@ -76,30 +110,37 @@ def main():
     )
 
     # --------------------------------------------------
-    # Load Model
+    # Load Model and Scaler
     # --------------------------------------------------
+
     try:
 
         loaded_model = load_model()
+        scaler = load_scaler()
 
-    except FileNotFoundError:
+    except FileNotFoundError as e:
 
-        st.error(
-            "❌ trained_model.sav was not found."
+        st.error("❌ Required file was not found.")
+
+        st.write(
+            "Make sure the following files are in the "
+            "same folder as this Python file:"
         )
 
-        st.info(
-            "Make sure trained_model.sav is uploaded "
-            "to the same folder as this Python file."
+        st.code(
+            """
+trained_model.sav
+diabetes.csv
+            """
         )
+
+        st.exception(e)
 
         return
 
     except Exception as e:
 
-        st.error(
-            "❌ Error loading the trained model."
-        )
+        st.error("❌ Error loading the model or dataset.")
 
         st.exception(e)
 
@@ -188,7 +229,7 @@ def main():
         use_container_width=True
     ):
 
-        # Store all input values
+        # Store input values
         input_data = [
             Pregnancies,
             Glucose,
@@ -205,7 +246,8 @@ def main():
 
             diagnosis = diabetes_prediction(
                 input_data,
-                loaded_model
+                loaded_model,
+                scaler
             )
 
             # Display result
